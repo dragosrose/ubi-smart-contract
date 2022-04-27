@@ -1,12 +1,14 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.0;
 
-import "hardhat/console.sol";
+// import "hardhat/console.sol";
 
 contract UBI {
-    event EmitSubscriptions(bool enable);
-    event EmitClaimable(bool enable);
-
+    event EnableSubscriptions(bool enable);
+    event DisableSubscriptions(bool enable);
+    
+    event Subscribe(address addr);
+    event Unsubscribe(address addr);
     
     address[] private subscribers;
     mapping(address => uint) private subscribersIndexed;
@@ -18,19 +20,17 @@ contract UBI {
 
     // check if subs/claims are enabled
     bool private subEnable;
-    // bool private claimEnable;
-
+    
     // track the passed time
     uint private timePassed;
 
-    uint private dailyIncome;
+    uint private balance;
 
     constructor(address _cron) {
         subEnable = false;
-        // claimEnable = false;
-
+        
         index = 0;
-        dailyIncome = 0;
+        balance = address(this).balance;
         owner = msg.sender;
         cron = _cron;
 
@@ -39,24 +39,19 @@ contract UBI {
 
     function donate() public payable returns (string memory) {
         require(msg.value > 0);
+        balance += msg.value;
         return string(abi.encodePacked("Thank you for your donation, ", msg.sender));
 
     }
 
     function enableSubscriptionsToChains() public onlyOwner {
-        emit EmitSubscriptions(true);
+        emit EnableSubscriptions(true);
     }
 
     function disableSubscriptionsToChains() public onlyOwner {
-        emit EmitSubscriptions(false);
+        emit DisableSubscriptions(false);
     }
 
-    // function enableClaimableToChains() public onlyCron {
-    //     emit EmitClaimable(true);
-    // }
-
-
-    
     function enableSubscription() public onlyCron {
         // require(address(this).balance > 0, "Not enough balance to distribute.");
         require(!subEnable, "Subscriptions already enabled.");
@@ -66,22 +61,26 @@ contract UBI {
 
     function disableSubscription() public onlyCron {
         require(subEnable, "Subscriptions are not enabled.");
-        require(timePassed >= 5 minutes, "Not enough time has passed");
+        require(timePassed >= 10 minutes, "Not enough time has passed");
 
+        timePassed = 0 minutes;
         subEnable = false;
         
     }
 
     // It executes every x amount of time since subscriptions have been enabled.
-    function checkIncomes() public onlyCron {
+    function checkIncomes() public onlyCron returns (uint) {
         require(subEnable, "Subscriptions are not enabled.");
-        dailyIncome = address(this).balance - dailyIncome;
+        uint share = balance / (subscribers.length);
         for(uint i = 0; i < subscribers.length; i++){
-            subscribersClaim[subscribers[i]] += dailyIncome;
+            subscribersClaim[subscribers[i]] += share;
+            balance -= share;
         }
 
         // Cron is legit no need for checking block time trust me bro
-        timePassed += 1 minutes;
+        timePassed += 2 minutes;
+        // console.log("Calculated income: %s", share);
+        return balance;
     }
 
 
@@ -92,30 +91,61 @@ contract UBI {
         require(!subEnable, "Subscriptions are not disabled.");
         (bool success, ) = msg.sender.call{value: subscribersClaim[msg.sender]}("");
         require(success, "Error claiming token.");
+        // console.log("Subscribers claim: %s", subscribersClaim[msg.sender]);
+        subscribersClaim[msg.sender] = 0;
+    }
+
+    function subscribe() public {
+        require(subEnable, "Subscriptions are not enabled.");
+        require(exists(msg.sender) == 0, "Address already subscribed.");
+        emit Subscribe(msg.sender);
+    }
+
+    function unsubscribe() public {
+        require(subEnable, "Subscriptions are not enabled.");
+        require(exists(msg.sender) != 0, "Address not subscribed in the first place.");
+        emit Unsubscribe(msg.sender);
     }
     
-    function getSubscription() public {
-        require(exists(msg.sender) == 0, "Address already subscribed.");
-        
-        subscribers.push(msg.sender);
-        subscribersIndexed[msg.sender] = index + 1;
+    function getSubscription(address addr) public onlyCron {
+        subscribers.push(addr);
+        subscribersIndexed[addr] = index + 1;
     }
 
-    // Tot ajungem sa cautam printre subscriberi
+    
+    function stopSubscription(address addr) public onlyCron{
+        uint _index = exists(addr);
+        require(_index != 0, "Address not subscribed in the first place.");
 
-    function stopSubscription(uint _index) public {
-        require(exists(msg.sender) != 0, "Address not subscribed in the first place.");
-
-        subscribers[_index] = subscribers[subscribers.length - 1];
+        subscribers[_index - 1] = subscribers[subscribers.length - 1];
         subscribers.pop();
 
         subscribersIndexed[msg.sender] = 0;
 
     }
 
-
     function exists(address item) private view returns (uint) {
         return subscribersIndexed[item];
+    }
+
+    function isSubscribed() public view returns (bool){
+        if(exists(msg.sender) != 0){
+            return true;
+        }
+
+        return false;
+    }
+
+    function claimable() public view returns (uint){
+        if(exists(msg.sender) != 0){
+            return subscribersClaim[msg.sender];
+        }
+
+        return 0;
+    }
+
+    function isSubEnabled() public view returns (bool) {
+        return subEnable;
     }
 
     modifier onlyOwner() {

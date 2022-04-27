@@ -26,6 +26,18 @@ module.exports = {
       url: process.env.INFURA_KEY,
       accounts: [process.env.ACCOUNT_KEY],
     },
+
+    smart_chain: {
+      url: "https://data-seed-prebsc-1-s1.binance.org:8545/",
+      chainId: 97,
+      accounts: [process.env.ACCOUNT_KEY],
+    },
+
+    mumbai: {
+      url: "https://rpc-mumbai.maticvigil.com",
+      chainId: 80001,
+      accounts: [process.env.ACCOUNT_KEY],
+    }
   },
   etherscan : {
     apiKey: process.env.CONTRACT_API,
